@@ -1062,7 +1062,7 @@ function _updateFloatingTexts(ctx, dt) {
 /** 所有可隐藏的 DOM 面板 ID */
 const _SCREEN_IDS = [
   'menu-main', 'menu-character', 'popup-pause', 'popup-controls',
-  'popup-result', 'talent-select-container', 'inventory-container',
+  'popup-result', 'popup-settings', 'talent-select-container', 'inventory-container',
   'boss-intro-container', 'shop-container', 'map-overlay',
   'meta-upgrade-container'
 ];
