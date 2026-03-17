@@ -567,10 +567,12 @@ export const GameEngine = {
 
     // 绘制场景（实体+房间）
     if (_state.phase === 'playing' || _state.phase === 'paused') {
+      EventBus.emit('engine:preRender');
       this._renderScene();
       // FX 绘制在特效层
       const fxCtx = Renderer.getContext('fx');
       if (fxCtx) FXManager.draw(fxCtx);
+      EventBus.emit('engine:postRender');
     }
 
     Renderer.updateTransition(dt);
@@ -592,6 +594,20 @@ export const GameEngine = {
     this._processGameInput(dt);
 
     // 2. Entity — 更新所有实体
+    // Sprint 5: 处理敌人 engagement delay
+    const allEnts = EntityManager.getAllEntities();
+    for (let i = 0; i < allEnts.length; i++) {
+      const e = allEnts[i];
+      if (e && e._engageDelay > 0) {
+        e._engageDelay -= dt;
+        if (e._engageDelay <= 0) {
+          e.speed = e._originalSpeed || 1;
+          e._engageDelay = 0;
+          // 闪白提示：敌人激活
+          e.flashTimer = 0.1;
+        }
+      }
+    }
     EntityManager.update(dt);
 
     // 同步 _state.player 与 EntityManager 中的玩家实体
@@ -742,7 +758,7 @@ export const GameEngine = {
           // 攻击弧光特效
           FXManager.playEffect('attack_arc', player.x, player.y, { direction: player.facing, element: _state.player.element });
           if (window.AudioManager) window.AudioManager.play('attack_light');
-          Camera.shake(2, 0.1);
+          Camera.shake(3, 0.12);
         }
       } else {
         if (window.AudioManager) window.AudioManager.play('attack_light');
@@ -944,7 +960,7 @@ export const GameEngine = {
                 type: 'normal'
               });
               if (window.AudioManager) window.AudioManager.play('hit_heavy');
-              Camera.shake(4, 0.15);
+              Camera.shake(6, 0.18);
             }
           }
         }
@@ -986,10 +1002,12 @@ export const GameEngine = {
             value: attackResult.damage,
             type: attackResult.isCrit ? 'crit' : 'normal'
           });
+          // 命中闪白 + 击退
+          target.flashTimer = 0.12;
           if (attackResult.killed) {
             _state.combat.killCount++;
             _state.player.kills++;
-            EventBus.emit('combat:kill', { x: target.x, y: target.y, enemyId: target.enemyId });
+            EventBus.emit('combat:kill', { x: target.x, y: target.y, enemyId: target.enemyId, victim: target });
             // 掉落物品
             const loot = ItemSystem.generateLoot(target.isBoss ? 'boss' : target.isElite ? 'elite' : 'normal', _state.dungeon.currentLayer);
             for (const drop of loot) {
@@ -1057,12 +1075,23 @@ export const GameEngine = {
           EventBus.emit('combat:comboTier', { tier: comboResult.tier, count: comboResult.count });
         }
 
+        // ── 命中反馈增强 ──
+        // 闪白效果
+        target.flashTimer = 0.15;
+
+        // 击退物理
+        const knockbackForce = attackResult.isCrit ? 8 : 4;
+        const kbAngle = player.facing;
+        target.x += Math.cos(kbAngle) * knockbackForce;
+        target.y += Math.sin(kbAngle) * knockbackForce;
+
         EventBus.emit('combat:hit', {
           x: target.x, y: target.y,
           damage: attackResult.damage,
           isCrit: attackResult.isCrit,
           element: attackResult.element,
-          targetType: 'enemy'
+          targetType: 'enemy',
+          target: target
         });
 
         UIManager.showDamageNumber({
@@ -1083,7 +1112,11 @@ export const GameEngine = {
         if (attackResult.killed) {
           _state.combat.killCount++;
           _state.player.kills++;
-          EventBus.emit('combat:kill', { x: target.x, y: target.y, enemyId: target.enemyId });
+          EventBus.emit('combat:kill', {
+            x: target.x, y: target.y,
+            enemyId: target.enemyId,
+            victim: target
+          });
           const loot = ItemSystem.generateLoot(target.isBoss ? 'boss' : target.isElite ? 'elite' : 'normal', _state.dungeon.currentLayer);
           for (const drop of loot) {
             if (drop.goldAmount) {
@@ -1235,6 +1268,9 @@ export const GameEngine = {
 
       if (window.AudioManager) window.AudioManager.play('room_clear');
 
+      // Sprint 5: 房间清除的额外视觉反馈
+      FXManager.screenShake(3, 0.1);
+
       // 检查是否击败 Boss
       if (room.type === 'boss') {
         const bossRoomId = DungeonGenerator.getBossRoomId();
@@ -1316,6 +1352,15 @@ export const GameEngine = {
         const enemyId = isElite ? `elite_layer${layer}` : `enemy_layer${layer}_${(i % 3) + 1}`;
 
         EntityManager.createEnemy({ enemyId, x: ex, y: ey, layer, isElite });
+
+        // Sprint 5: 敌人 engagement delay — 刚出现时不会立即攻击
+        const allEnts = EntityManager.getAllEntities();
+        const lastEnemy = allEnts[allEnts.length - 1];
+        if (lastEnemy && lastEnemy.type === 'enemy') {
+          lastEnemy._engageDelay = 0.5 + Math.random() * 0.7; // 0.5~1.2秒
+          lastEnemy._originalSpeed = lastEnemy.speed || 1;
+          lastEnemy.speed = 0; // 生成时静止
+        }
       }
     }
   },
@@ -1338,31 +1383,73 @@ export const GameEngine = {
         const doorY = door.y || 0;
         const dist = Math.sqrt((player.x - doorX) ** 2 + (player.y - doorY) ** 2);
         if (dist < 40) {
-          // 移动到下一个房间
-          const nextRoom = DungeonGenerator.moveToRoom(door.targetRoomId, door.id);
-          if (nextRoom) {
-            player.x = nextRoom.spawnX;
-            player.y = nextRoom.spawnY;
-            const newRoom = DungeonGenerator.getCurrentRoom();
-            if (newRoom) {
-              Camera.setBounds(newRoom.bounds);
-              Camera.snapTo(player.x, player.y);
-              EntityManager.clearNonPlayerEntities();
-              this._spawnRoomEnemies(newRoom);
-              EventBus.emit('dungeon:roomEnter', {
-                roomId: newRoom.id,
-                roomType: newRoom.type,
-                layer: _state.dungeon.currentLayer
-              });
-              if (newRoom.type === 'shop') {
-                UIManager.showScreen('shop');
-              } else if (newRoom.type === 'boss') {
-                if (window.AudioManager) window.AudioManager.setState('boss');
+          // ── 房间过渡：淡出→切换→淡入 ──
+          if (_state._roomTransition) return; // 正在过渡中，忽略
+          _state._roomTransition = true;
+          _state._transitionAlpha = 0;
+          _state._transitionPhase = 'fadeOut'; // fadeOut → switch → fadeIn
+
+          const targetDoor = door;
+          const transitionUpdate = () => {
+            const speed = 4; // alpha/秒 (约0.25秒全黑)
+            if (_state._transitionPhase === 'fadeOut') {
+              _state._transitionAlpha = Math.min(1, _state._transitionAlpha + speed * (1 / 60));
+              if (_state._transitionAlpha >= 1) {
+                // 执行房间切换
+                const nextRoom = DungeonGenerator.moveToRoom(targetDoor.targetRoomId, targetDoor.id);
+                if (nextRoom) {
+                  player.x = nextRoom.spawnX;
+                  player.y = nextRoom.spawnY;
+                  const newRoom = DungeonGenerator.getCurrentRoom();
+                  if (newRoom) {
+                    Camera.setBounds(newRoom.bounds);
+                    Camera.snapTo(player.x, player.y);
+                    EntityManager.clearNonPlayerEntities();
+                    this._spawnRoomEnemies(newRoom);
+                    EventBus.emit('dungeon:roomEnter', {
+                      roomId: newRoom.id,
+                      roomType: newRoom.type,
+                      layer: _state.dungeon.currentLayer
+                    });
+                    // 音频状态平滑切换
+                    if (newRoom.type === 'shop') {
+                      UIManager.showScreen('shop');
+                      if (window.AudioManager) window.AudioManager.setState('explore');
+                    } else if (newRoom.type === 'boss') {
+                      if (window.AudioManager) window.AudioManager.setState('boss');
+                    } else {
+                      if (window.AudioManager) window.AudioManager.setState('explore');
+                    }
+                  }
+                  if (window.AudioManager) window.AudioManager.play('door_open');
+                }
+                _state._transitionPhase = 'fadeIn';
+              }
+            } else if (_state._transitionPhase === 'fadeIn') {
+              _state._transitionAlpha = Math.max(0, _state._transitionAlpha - speed * (1 / 60));
+              if (_state._transitionAlpha <= 0) {
+                _state._roomTransition = false;
+                _state._transitionPhase = null;
+                EventBus.off('engine:preRender', transitionUpdate);
+                EventBus.off('engine:postRender', transitionDraw);
               }
             }
-            if (window.AudioManager) window.AudioManager.play('door_open');
-            return;
-          }
+          };
+          const transitionDraw = () => {
+            if (_state._transitionAlpha > 0) {
+              const hudCtx = Renderer.getContext('hud');
+              if (hudCtx) {
+                hudCtx.save();
+                hudCtx.globalAlpha = _state._transitionAlpha;
+                hudCtx.fillStyle = '#0a0a1a';
+                hudCtx.fillRect(0, 0, W, H);
+                hudCtx.restore();
+              }
+            }
+          };
+          EventBus.on('engine:preRender', transitionUpdate);
+          EventBus.on('engine:postRender', transitionDraw);
+          return;
         }
       }
     }
