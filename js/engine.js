@@ -13,6 +13,7 @@ import { Renderer } from './renderer.js';
 import { Collision } from './collision.js';
 import { EntityManager } from './entity.js';
 import { DungeonGenerator } from './dungeon.js';
+import { LEVELS } from './data/levels.js';
 import { CombatSystem } from './combat.js';
 import { AIController } from './ai.js';
 import { ItemSystem } from './item.js';
@@ -1258,6 +1259,7 @@ export const GameEngine = {
 
     const enemyCount = EntityManager.getAliveEnemyCount();
     if (enemyCount === 0) {
+      // 防卡关：如果房间未清除但没有存活敌人，立即清除
       DungeonGenerator.clearCurrentRoom();
       _state.dungeon.roomsExplored++;
       EventBus.emit('dungeon:roomCleared', {
@@ -1308,12 +1310,12 @@ export const GameEngine = {
 
   /** 在房间中生成敌人 */
   _spawnRoomEnemies(room) {
-    if (!room || room.type === 'start' || room.type === 'shop' || room.type === 'treasure') return;
+    if (!room || room.type === 'start' || room.type === 'shop') return;
 
     // 第一层第一个房间（起始房间）不生成敌人 → 安全教学区
     if (_state.dungeon.currentLayer === 1 && _state.dungeon.roomsExplored === 0 && !room._isSafeZoneChecked) {
       room._isSafeZoneChecked = true;
-      room.cleared = true; // 标记为已清除，门直接可用
+      room.cleared = true;
       EventBus.emit('dungeon:roomCleared', {
         roomId: room.id,
         roomType: room.type,
@@ -1324,39 +1326,52 @@ export const GameEngine = {
 
     const layer = DungeonGenerator.getCurrentLayer();
     const isBossRoom = room.type === 'boss';
-    const isEliteRoom = room.type === 'elite';
+    const roomW = room.bounds.right - room.bounds.left;
+    const roomH = room.bounds.bottom - room.bounds.top;
+    const cx = room.bounds.left + roomW / 2;
+    const cy = room.bounds.top + roomH / 2;
 
     if (isBossRoom) {
-      // Boss 房间 — 生成 Boss
-      const bossId = `boss_layer${layer}`;
-      const cx = (room.bounds.left + room.bounds.right) / 2;
-      const cy = (room.bounds.top + room.bounds.bottom) / 2;
+      // Boss 房间 — 从 levels.js 取正确的 bossId
+      const layerConfig = LEVELS[layer - 1];
+      const bossId = layerConfig ? layerConfig.bossId : 'boss_euler';
       EntityManager.createEnemy({ enemyId: bossId, x: cx, y: cy - 60, layer, isBoss: true });
       if (window.AudioManager) window.AudioManager.setState('boss');
     } else {
-      // 普通/精英房间 — 生成敌人
-      const enemyCount = isBossRoom ? 1 : isEliteRoom ? 2 : Math.min(3 + Math.floor(layer * 0.5), 6);
-      const roomW = room.bounds.right - room.bounds.left;
-      const roomH = room.bounds.bottom - room.bounds.top;
-      const cx = room.bounds.left + roomW / 2;
-      const cy = room.bounds.top + roomH / 2;
+      // 使用 dungeon.js 预生成的 room.enemies 数据（包含正确的 enemyId）
+      const enemies = room.enemies || [];
 
-      for (let i = 0; i < enemyCount; i++) {
-        // 在房间内随机分布
-        const angle = (Math.PI * 2 * i) / enemyCount;
-        const radius = Math.min(roomW, roomH) * 0.25;
-        const ex = cx + Math.cos(angle) * radius;
-        const ey = cy + Math.sin(angle) * radius;
+      if (enemies.length === 0) {
+        // 防卡关：如果预生成数据为空（event 房间可能无敌人），直接标记清除
+        room.cleared = true;
+        DungeonGenerator.clearCurrentRoom();
+        _state.dungeon.roomsExplored++;
+        EventBus.emit('dungeon:roomCleared', {
+          roomId: room.id,
+          roomType: room.type,
+          layer: _state.dungeon.currentLayer
+        });
+        return;
+      }
 
-        const isElite = isEliteRoom && i === 0;
-        const enemyId = isElite ? `elite_layer${layer}` : `enemy_layer${layer}_${(i % 3) + 1}`;
+      for (let i = 0; i < enemies.length; i++) {
+        const enemyData = enemies[i];
+        // 使用预生成的相对坐标计算实际位置
+        const ex = room.bounds.left + enemyData.relativeX * roomW;
+        const ey = room.bounds.top + enemyData.relativeY * roomH;
 
-        EntityManager.createEnemy({ enemyId, x: ex, y: ey, layer, isElite });
+        EntityManager.createEnemy({
+          enemyId: enemyData.enemyId,
+          x: ex,
+          y: ey,
+          layer,
+          isElite: enemyData.isElite || false
+        });
 
-        // Sprint 5: 敌人 engagement delay — 刚出现时不会立即攻击
+        // 敌人 engagement delay — 刚出现时不会立即攻击
         const allEnts = EntityManager.getAllEntities();
         const lastEnemy = allEnts[allEnts.length - 1];
-        if (lastEnemy && lastEnemy.type === 'enemy') {
+        if (lastEnemy && (lastEnemy.type === 'enemy' || lastEnemy.type === 'elite')) {
           lastEnemy._engageDelay = 0.5 + Math.random() * 0.7; // 0.5~1.2秒
           lastEnemy._originalSpeed = lastEnemy.speed || 1;
           lastEnemy.speed = 0; // 生成时静止
