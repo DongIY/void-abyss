@@ -1142,9 +1142,10 @@ export const SpriteRenderer = {
     ctx.save();
     ctx.translate(screenX, screenY);
 
-    // 受伤闪白
-    if (entity.flashTimer && entity.flashTimer > 0) {
-      ctx.globalAlpha = 0.5 + Math.sin(entity.flashTimer * 20) * 0.5;
+    // 受伤闪白 — 使用 overlay 白色效果增强打击感
+    const isFlashing = entity.flashTimer && entity.flashTimer > 0;
+    if (isFlashing) {
+      ctx.globalAlpha = 0.6 + Math.sin(entity.flashTimer * 30) * 0.4;
     }
 
     // I-Frame 闪烁
@@ -1166,6 +1167,17 @@ export const SpriteRenderer = {
       this._drawProjectile(ctx, entity, w, h);
     } else if (type === 'item') {
       this._drawItem(ctx, entity, w, h);
+    }
+
+    // ── 受击白色覆盖（hit flash overlay） ──
+    if (isFlashing) {
+      const flashIntensity = Math.min(1, entity.flashTimer * 5);
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.globalAlpha = flashIntensity * 0.7;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
     }
 
     // 血条（敌人/Boss）
