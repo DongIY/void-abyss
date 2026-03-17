@@ -178,6 +178,34 @@
       </div>
     </div>
 
+    <!-- ═══ 设置弹窗 ═══ -->
+    <div id="popup-settings" class="ui-popup" style="display:none;">
+      <div class="popup-content popup-wide settings-popup">
+        <h2>音量设置</h2>
+        <div class="volume-controls">
+          <div class="volume-row">
+            <label class="volume-label">🔊 主音量</label>
+            <input type="range" id="vol-master" class="volume-slider" min="0" max="100" value="25" step="1">
+            <span class="volume-value" id="vol-master-val">25%</span>
+          </div>
+          <div class="volume-row">
+            <label class="volume-label">⚔️ 音效</label>
+            <input type="range" id="vol-sfx" class="volume-slider" min="0" max="100" value="50" step="1">
+            <span class="volume-value" id="vol-sfx-val">50%</span>
+          </div>
+          <div class="volume-row">
+            <label class="volume-label">🎵 音乐</label>
+            <input type="range" id="vol-bgm" class="volume-slider" min="0" max="100" value="20" step="1">
+            <span class="volume-value" id="vol-bgm-val">20%</span>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" id="btn-reset-volume">恢复默认</button>
+          <button class="btn btn-primary" id="btn-close-settings">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 静音按钮（右上角常驻） -->
     <button id="btn-mute" class="mute-button" title="切换静音">🔊</button>
   </div>
@@ -253,6 +281,84 @@
           btnMute.textContent = '🔇';
         }
       }
+
+      // ── 音量设置面板 ──
+      const btnSettings = document.getElementById('btn-settings');
+      const settingsPopup = document.getElementById('popup-settings');
+      const btnCloseSettings = document.getElementById('btn-close-settings');
+      const btnResetVolume = document.getElementById('btn-reset-volume');
+
+      // 音量滑块元素
+      const sliders = {
+        master: document.getElementById('vol-master'),
+        sfx:    document.getElementById('vol-sfx'),
+        bgm:    document.getElementById('vol-bgm')
+      };
+      const valueLabels = {
+        master: document.getElementById('vol-master-val'),
+        sfx:    document.getElementById('vol-sfx-val'),
+        bgm:    document.getElementById('vol-bgm-val')
+      };
+
+      /** 同步滑块显示与 AudioManager */
+      function syncSliders() {
+        if (!window.AudioManager) return;
+        for (const ch of ['master', 'sfx', 'bgm']) {
+          const v = Math.round(window.AudioManager.getVolume(ch) * 100);
+          if (sliders[ch]) sliders[ch].value = v;
+          if (valueLabels[ch]) valueLabels[ch].textContent = v + '%';
+        }
+      }
+
+      /** 绑定滑块实时更新 */
+      for (const ch of ['master', 'sfx', 'bgm']) {
+        if (sliders[ch]) {
+          sliders[ch].addEventListener('input', () => {
+            const v = parseInt(sliders[ch].value);
+            if (valueLabels[ch]) valueLabels[ch].textContent = v + '%';
+            if (window.AudioManager) {
+              window.AudioManager.setVolume(ch, v / 100);
+            }
+          });
+        }
+      }
+
+      // 打开设置
+      if (btnSettings) {
+        btnSettings.addEventListener('click', () => {
+          syncSliders();
+          if (settingsPopup) settingsPopup.style.display = 'flex';
+        });
+      }
+
+      // 关闭设置
+      if (btnCloseSettings) {
+        btnCloseSettings.addEventListener('click', () => {
+          if (settingsPopup) settingsPopup.style.display = 'none';
+        });
+      }
+
+      // 重置音量
+      if (btnResetVolume) {
+        btnResetVolume.addEventListener('click', () => {
+          if (window.AudioManager) {
+            window.AudioManager.setVolume('master', 0.25);
+            window.AudioManager.setVolume('sfx', 0.5);
+            window.AudioManager.setVolume('bgm', 0.2);
+          }
+          syncSliders();
+        });
+      }
+
+      // 清除旧版 localStorage 高音量设置（确保首次体验新默认值）
+      try {
+        const oldMaster = localStorage.getItem('void_abyss_volume_master');
+        if (oldMaster !== null && parseFloat(oldMaster) > 0.5) {
+          localStorage.removeItem('void_abyss_volume_master');
+          localStorage.removeItem('void_abyss_volume_sfx');
+          localStorage.removeItem('void_abyss_volume_bgm');
+        }
+      } catch(_) {}
 
       // 角色选择 → 启动游戏
       EventBus.on('game:characterSelected', (data) => {
