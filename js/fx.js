@@ -164,6 +164,7 @@ export const FXManager = {
       'block_spark': () => this._effectBlockSpark(x, y, options),
       'level_up': () => this._effectLevelUp(x, y, options),
       'death_dissolve': () => this._effectDeathDissolve(x, y, options),
+      'enemy_death_burst': () => this._effectEnemyDeathBurst(x, y, options),
       'portal': () => this._effectPortal(x, y, options),
       'item_pickup': () => this._effectItemPickup(x, y, options),
       'element_reaction_fire': () => this._effectElementFire(x, y, options),
@@ -648,6 +649,70 @@ export const FXManager = {
     });
   },
 
+  /** 敌人死亡爆发（高打击感快速爆发） */
+  _effectEnemyDeathBurst(x, y, opts) {
+    const elemColors = {
+      void: [COLORS.void, '#c084fc', COLORS.white],
+      fire: [COLORS.fire, COLORS.fireOrange, COLORS.critGold],
+      ice: [COLORS.ice, COLORS.iceWhite, COLORS.white],
+      lightning: [COLORS.lightning, '#fde68a', COLORS.white],
+      none: ['#ef4444', '#fca5a5', COLORS.white]
+    };
+    const colors = elemColors[opts.element] || elemColors.none;
+
+    // 主爆发：大量快速扩散粒子
+    this.spawnParticles({
+      x, y,
+      count: randomInt(25, 40),
+      color: colors,
+      speed: [120, 300],
+      life: [0.15, 0.45],
+      size: [3, 7],
+      spread: Math.PI * 2,
+      fadeOut: true,
+      shrink: true,
+      shape: 'circle'
+    });
+
+    // 方形碎片（像素碎裂感）
+    this.spawnParticles({
+      x, y,
+      count: randomInt(8, 14),
+      color: colors,
+      speed: [60, 160],
+      life: [0.3, 0.7],
+      size: [3, 6],
+      spread: Math.PI * 2,
+      fadeOut: true,
+      shrink: false,
+      gravity: 120,
+      shape: 'square'
+    });
+
+    // 白色闪光核心
+    _persistentEffects.push({
+      type: 'death_flash',
+      x, y,
+      elapsed: 0,
+      duration: 0.12,
+      draw(ctx, eff) {
+        const alpha = 0.8 * (1 - eff.elapsed / eff.duration);
+        if (!Camera.isInView(eff.x, eff.y, 60)) return;
+        const screen = Camera.worldToScreen(eff.x, eff.y);
+        ctx.save();
+        ctx.globalAlpha = clamp(alpha, 0, 1);
+        ctx.fillStyle = COLORS.white;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, 20 * (1 - eff.elapsed / eff.duration), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+
+    // 击杀震屏
+    this.screenShake(5, 0.15);
+  },
+
   /** 传送门漩涡（持续） */
   _effectPortal(x, y, opts) {
     const portalId = `portal_${x}_${y}`;
@@ -1034,19 +1099,30 @@ export const FXManager = {
     EventBus.on('combat:hit', (data) => {
       if (data && data.target) {
         this.playEffect('hit_burst', data.target.x, data.target.y, data);
+        // 每次命中轻微震屏增强打击感
+        this.screenShake(2, 0.08);
       }
     });
 
     EventBus.on('combat:crit', (data) => {
       if (data && data.target) {
         this.playEffect('crit_burst', data.target.x, data.target.y, data);
-        this.screenShake(5, 0.2);
+        this.screenShake(6, 0.25);
+        // 暴击慢动作 — 极短
+        this.slowMotion(0.4, 0.06);
       }
     });
 
     EventBus.on('combat:kill', (data) => {
       if (data && data.victim) {
+        // 使用新的高打击感爆发特效替代慢速分解
+        this.playEffect('enemy_death_burst', data.victim.x, data.victim.y, {
+          element: data.victim.element || 'none'
+        });
+        // 同时保留分解效果（少量）
         this.playEffect('death_dissolve', data.victim.x, data.victim.y, data);
+        // 击杀慢动作
+        this.slowMotion(0.3, 0.08);
       }
     });
 
