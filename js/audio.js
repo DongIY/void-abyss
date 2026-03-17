@@ -16,11 +16,11 @@ const AudioManager = (() => {
   let bgmNodes = null; // 当前 BGM 的节点组
   let heartbeatInterval = null;
 
-  // 音量层级
+  // 音量层级（v2: 大幅降低默认值，避免刺耳）
   const volumes = {
-    master: 0.7,
-    sfx: 0.8,
-    bgm: 0.5,
+    master: 0.25,
+    sfx: 0.5,
+    bgm: 0.2,
   };
 
   // 节流记录 —— { sfxName: lastPlayTimestamp }
@@ -1021,71 +1021,88 @@ const AudioManager = (() => {
     bgmType = null;
   }
 
-  /** 探索 BGM —— 缓慢脉动 + 虚空氛围 */
+  /** 探索 BGM —— 柔和氛围 + 温暖琶音（v2: 去掉刺耳的 sawtooth 低频） */
   function startBgmExplore() {
     const c = getCtx();
     const masterGain = makeGain(c, bgmGain());
     masterGain.connect(c.destination);
     const nodes = [masterGain];
 
-    // 低频脉动基底
+    // 柔和低频基底（sine 替代 sawtooth，温暖而非刺耳）
     const bass = c.createOscillator();
-    bass.type = 'sawtooth';
-    bass.frequency.value = 55;
-    const bassGain = makeGain(c, 0.15);
-    bass.connect(bassGain);
+    bass.type = 'sine';
+    bass.frequency.value = 65;
+    const bassGain = makeGain(c, 0.08);
+    const bassFilter = makeFilter(c, 'lowpass', 120, 1);
+    bass.connect(bassFilter);
+    bassFilter.connect(bassGain);
     bassGain.connect(masterGain);
     bass.start();
-    nodes.push(bass, bassGain);
+    nodes.push(bass, bassGain, bassFilter);
 
-    // LFO 调制低频
+    // 缓慢呼吸感 LFO（更慢更微弱）
     const lfo = c.createOscillator();
     lfo.type = 'sine';
-    lfo.frequency.value = 0.15;
-    const lfoGain = makeGain(c, 8);
+    lfo.frequency.value = 0.08;
+    const lfoGain = makeGain(c, 3);
     lfo.connect(lfoGain);
     lfoGain.connect(bass.frequency);
     lfo.start();
     nodes.push(lfo, lfoGain);
 
-    // 氛围 pad
+    // 温暖 Pad（triangle 更圆润）
     const pad = c.createOscillator();
-    pad.type = 'sine';
-    pad.frequency.value = 110;
-    const padGain = makeGain(c, 0.06);
-    const padFilter = makeFilter(c, 'lowpass', 200, 1);
+    pad.type = 'triangle';
+    pad.frequency.value = 130.8; // C3
+    const padGain = makeGain(c, 0.04);
+    const padFilter = makeFilter(c, 'lowpass', 300, 1);
     pad.connect(padFilter);
     padFilter.connect(padGain);
     padGain.connect(masterGain);
     pad.start();
     nodes.push(pad, padGain, padFilter);
 
-    // 随机星空叮咚（每 3-6 秒一个音符）
+    // 第二层 Pad（五度和声）
+    const pad2 = c.createOscillator();
+    pad2.type = 'sine';
+    pad2.frequency.value = 196.0; // G3
+    const pad2Gain = makeGain(c, 0.025);
+    const pad2Filter = makeFilter(c, 'lowpass', 250, 1);
+    pad2.connect(pad2Filter);
+    pad2Filter.connect(pad2Gain);
+    pad2Gain.connect(masterGain);
+    pad2.start();
+    nodes.push(pad2, pad2Gain, pad2Filter);
+
+    // 柔和星空琶音（每 2.5-5 秒，使用五声音阶，更有旋律感）
+    const pentatonic = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3];
     const starInterval = setInterval(() => {
       if (muted || bgmType !== 'explore') return;
-      const freq = 400 + Math.random() * 800;
+      const freq = pentatonic[Math.floor(Math.random() * pentatonic.length)];
       const t = c.currentTime;
-      const { osc, gain } = makeOsc(c, 'sine', freq, bgmGain() * 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
+      const { osc, gain } = makeOsc(c, 'sine', freq, bgmGain() * 0.06);
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(bgmGain() * 0.06, t + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 2.0);
       osc.start(t);
-      try { osc.stop(t + 1.6); } catch (_) {}
+      try { osc.stop(t + 2.2); } catch (_) {}
       osc.onended = () => { try { osc.disconnect(); gain.disconnect(); } catch (_) {} };
-    }, 3000 + Math.random() * 3000);
+    }, 2500 + Math.random() * 2500);
 
     bgmNodes = nodes;
     bgmLoop = starInterval;
     bgmType = 'explore';
   }
 
-  /** 战斗 BGM —— 紧张节奏 + 低频鼓点 */
+  /** 战斗 BGM —— 紧张节奏（v2: 更柔和的鼓点 + 去掉持续嗡鸣） */
   function startBgmCombat() {
     const c = getCtx();
     const masterGain = makeGain(c, bgmGain());
     masterGain.connect(c.destination);
     const nodes = [masterGain];
 
-    // 低频脉冲节奏（模拟鼓点）
-    const bpm = 140;
+    // 鼓点节奏（柔和版 kick）
+    const bpm = 130;
     const beatInterval = 60000 / bpm;
 
     let beatCount = 0;
@@ -1094,41 +1111,56 @@ const AudioManager = (() => {
       const t = c.currentTime;
       beatCount++;
 
-      // Kick —— 每拍
+      // 柔和 Kick（sine，更快衰减）
       const kick = c.createOscillator();
       kick.type = 'sine';
-      kick.frequency.setValueAtTime(150, t);
-      kick.frequency.exponentialRampToValueAtTime(40, t + 0.1);
-      const kickG = makeGain(c, bgmGain() * 0.25);
-      kickG.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      kick.frequency.setValueAtTime(120, t);
+      kick.frequency.exponentialRampToValueAtTime(40, t + 0.08);
+      const kickG = makeGain(c, bgmGain() * 0.18);
+      kickG.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
       kick.connect(kickG);
       kickG.connect(masterGain);
       kick.start(t);
-      try { kick.stop(t + 0.2); } catch (_) {}
+      try { kick.stop(t + 0.15); } catch (_) {}
       kick.onended = () => { try { kick.disconnect(); kickG.disconnect(); } catch (_) {} };
 
-      // Snare/hi-hat —— 反拍（偶数拍）
+      // 柔和 hi-hat（更低音量）
       if (beatCount % 2 === 0) {
-        const filter = makeFilter(c, 'highpass', 2000, 0.5);
+        const filter = makeFilter(c, 'highpass', 3000, 0.5);
         const noise = c.createBufferSource();
         noise.buffer = getNoiseBuffer(c);
-        const ng = makeGain(c, bgmGain() * 0.08);
-        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+        const ng = makeGain(c, bgmGain() * 0.04);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
         noise.connect(filter);
         filter.connect(ng);
         ng.connect(masterGain);
         noise.start(t);
-        try { noise.stop(t + 0.08); } catch (_) {}
+        try { noise.stop(t + 0.05); } catch (_) {}
         noise.onended = () => { try { noise.disconnect(); ng.disconnect(); filter.disconnect(); } catch (_) {} };
+      }
+
+      // 每 4 拍一个低沉脉冲（sine，非 sawtooth）
+      if (beatCount % 4 === 0) {
+        const pulse = c.createOscillator();
+        pulse.type = 'sine';
+        pulse.frequency.setValueAtTime(80, t);
+        pulse.frequency.exponentialRampToValueAtTime(50, t + 0.15);
+        const pulseG = makeGain(c, bgmGain() * 0.1);
+        pulseG.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+        pulse.connect(pulseG);
+        pulseG.connect(masterGain);
+        pulse.start(t);
+        try { pulse.stop(t + 0.25); } catch (_) {}
+        pulse.onended = () => { try { pulse.disconnect(); pulseG.disconnect(); } catch (_) {} };
       }
     }, beatInterval);
 
-    // 紧张的持续低频嗡鸣
+    // 柔和紧张感 pad（triangle，低音量）
     const drone = c.createOscillator();
-    drone.type = 'sawtooth';
+    drone.type = 'triangle';
     drone.frequency.value = 73.4; // D2
-    const droneG = makeGain(c, 0.08);
-    const droneFilter = makeFilter(c, 'lowpass', 150, 2);
+    const droneG = makeGain(c, 0.03);
+    const droneFilter = makeFilter(c, 'lowpass', 200, 1);
     drone.connect(droneFilter);
     droneFilter.connect(droneG);
     droneG.connect(masterGain);
@@ -1140,47 +1172,39 @@ const AudioManager = (() => {
     bgmType = 'combat';
   }
 
-  /** Boss 战 BGM —— 史诗压迫 + 多层叠加 */
+  /** Boss 战 BGM —— 紧张节奏（v2: 去掉极端低频压迫） */
   function startBgmBoss() {
     const c = getCtx();
     const masterGain = makeGain(c, bgmGain());
     masterGain.connect(c.destination);
     const nodes = [masterGain];
 
-    // 超低频 rumble
+    // 低频 rumble（sine，不再是 sawtooth）
     const rumble = c.createOscillator();
-    rumble.type = 'sawtooth';
-    rumble.frequency.value = 35;
-    const rumbleG = makeGain(c, 0.12);
-    rumble.connect(rumbleG);
+    rumble.type = 'sine';
+    rumble.frequency.value = 45;
+    const rumbleG = makeGain(c, 0.06);
+    const rumbleFilter = makeFilter(c, 'lowpass', 80, 1);
+    rumble.connect(rumbleFilter);
+    rumbleFilter.connect(rumbleG);
     rumbleG.connect(masterGain);
     rumble.start();
-    nodes.push(rumble, rumbleG);
+    nodes.push(rumble, rumbleG, rumbleFilter);
 
-    // LFO 压迫感
-    const lfo = c.createOscillator();
-    lfo.type = 'sine';
-    lfo.frequency.value = 0.5;
-    const lfoG = makeGain(c, 5);
-    lfo.connect(lfoG);
-    lfoG.connect(rumble.frequency);
-    lfo.start();
-    nodes.push(lfo, lfoG);
-
-    // 中频紧张 pad
+    // 紧张 Pad（triangle 替代 sawtooth）
     const pad = c.createOscillator();
-    pad.type = 'sawtooth';
+    pad.type = 'triangle';
     pad.frequency.value = 110;
-    const padG = makeGain(c, 0.06);
-    const padFilter = makeFilter(c, 'bandpass', 200, 3);
+    const padG = makeGain(c, 0.04);
+    const padFilter = makeFilter(c, 'bandpass', 200, 2);
     pad.connect(padFilter);
     padFilter.connect(padG);
     padG.connect(masterGain);
     pad.start();
     nodes.push(pad, padG, padFilter);
 
-    // 鼓点节奏 —— 更快更重
-    const bpm = 160;
+    // 快速鼓点
+    const bpm = 150;
     const beatInterval = 60000 / bpm;
     let beatCount = 0;
     const drumLoop = setInterval(() => {
@@ -1188,47 +1212,47 @@ const AudioManager = (() => {
       const t = c.currentTime;
       beatCount++;
 
-      // 重 Kick
+      // Kick
       const kick = c.createOscillator();
       kick.type = 'sine';
-      kick.frequency.setValueAtTime(180, t);
-      kick.frequency.exponentialRampToValueAtTime(30, t + 0.12);
-      const kickG = makeGain(c, bgmGain() * 0.35);
-      kickG.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      kick.frequency.setValueAtTime(140, t);
+      kick.frequency.exponentialRampToValueAtTime(30, t + 0.1);
+      const kickG = makeGain(c, bgmGain() * 0.22);
+      kickG.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
       kick.connect(kickG);
       kickG.connect(masterGain);
       kick.start(t);
-      try { kick.stop(t + 0.2); } catch (_) {}
+      try { kick.stop(t + 0.18); } catch (_) {}
       kick.onended = () => { try { kick.disconnect(); kickG.disconnect(); } catch (_) {} };
 
-      // 每4拍一个重低频冲击
-      if (beatCount % 4 === 0) {
-        const impact = c.createOscillator();
-        impact.type = 'sawtooth';
-        impact.frequency.setValueAtTime(60, t);
-        impact.frequency.exponentialRampToValueAtTime(25, t + 0.4);
-        const impG = makeGain(c, bgmGain() * 0.2);
-        impG.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-        impact.connect(impG);
-        impG.connect(masterGain);
-        impact.start(t);
-        try { impact.stop(t + 0.55); } catch (_) {}
-        impact.onended = () => { try { impact.disconnect(); impG.disconnect(); } catch (_) {} };
-      }
-
-      // 反拍 hi-hat
+      // hi-hat
       if (beatCount % 2 === 0) {
         const filter = makeFilter(c, 'highpass', 3000, 0.5);
         const noise = c.createBufferSource();
         noise.buffer = getNoiseBuffer(c);
-        const ng = makeGain(c, bgmGain() * 0.06);
-        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+        const ng = makeGain(c, bgmGain() * 0.04);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
         noise.connect(filter);
         filter.connect(ng);
         ng.connect(masterGain);
         noise.start(t);
-        try { noise.stop(t + 0.05); } catch (_) {}
+        try { noise.stop(t + 0.04); } catch (_) {}
         noise.onended = () => { try { noise.disconnect(); ng.disconnect(); filter.disconnect(); } catch (_) {} };
+      }
+
+      // 每 4 拍低频冲击
+      if (beatCount % 4 === 0) {
+        const impact = c.createOscillator();
+        impact.type = 'sine';
+        impact.frequency.setValueAtTime(60, t);
+        impact.frequency.exponentialRampToValueAtTime(25, t + 0.3);
+        const impG = makeGain(c, bgmGain() * 0.12);
+        impG.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+        impact.connect(impG);
+        impG.connect(masterGain);
+        impact.start(t);
+        try { impact.stop(t + 0.4); } catch (_) {}
+        impact.onended = () => { try { impact.disconnect(); impG.disconnect(); } catch (_) {} };
       }
     }, beatInterval);
 
