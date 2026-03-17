@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>深渊领域 · Void Abyss</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- ═══ 加载遮罩 ═══ -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-content">
+      <div class="loading-title">VOID ABYSS</div>
+      <div class="loading-subtitle">深 渊 领 域</div>
+      <div class="loading-bar-container">
+        <div class="loading-bar" id="loading-bar"></div>
+      </div>
+      <div class="loading-text" id="loading-text">Initializing...</div>
+    </div>
+  </div>
+
+  <!-- ═══ 游戏主容器 ═══ -->
+  <div id="game-container" class="game-container">
+    <!-- 四层 Canvas (z-index 递增) -->
+    <canvas id="canvas-bg" class="game-canvas" width="960" height="640"></canvas>
+    <canvas id="canvas-entity" class="game-canvas" width="960" height="640"></canvas>
+    <canvas id="canvas-fx" class="game-canvas" width="960" height="640"></canvas>
+    <canvas id="canvas-hud" class="game-canvas" width="960" height="640"></canvas>
+  </div>
+
+  <!-- ═══ UI DOM 容器（覆盖在 Canvas 上方） ═══ -->
+  <div id="ui-container" class="ui-container">
+    <!-- 主菜单 -->
+    <div id="menu-main" class="ui-screen menu-screen" style="display:none;">
+      <h1 class="menu-title">VOID ABYSS</h1>
+      <p class="menu-subtitle">深 渊 领 域</p>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-start">开始冒险</button>
+        <button class="btn btn-secondary" id="btn-meta-upgrade">深渊强化</button>
+        <button class="btn btn-secondary" id="btn-how-to-play">操作说明</button>
+        <button class="btn btn-secondary" id="btn-settings">设置</button>
+      </div>
+    </div>
+
+    <!-- 角色选择 -->
+    <div id="menu-character" class="ui-screen" style="display:none;">
+      <h2 class="screen-title">选择角色</h2>
+      <div class="character-cards">
+        <div class="character-card" data-character="voidwalker">
+          <div class="char-icon void-icon">⬟</div>
+          <div class="char-name">虚空行者</div>
+          <div class="char-desc">远程元素 · 高爆发</div>
+        </div>
+        <div class="character-card" data-character="abyssal_knight">
+          <div class="char-icon knight-icon">⚔</div>
+          <div class="char-name">深渊战士</div>
+          <div class="char-desc">近战肉搏 · 高防御</div>
+        </div>
+        <div class="character-card locked" data-character="shadow_hunter">
+          <div class="char-icon hunter-icon">🗡</div>
+          <div class="char-name">暗影猎手</div>
+          <div class="char-desc">高暴击 · 高攻速</div>
+        </div>
+      </div>
+      <button class="btn btn-back" id="btn-back-to-menu">返回</button>
+    </div>
+
+    <!-- 暂停弹窗 -->
+    <div id="popup-pause" class="ui-popup" style="display:none;">
+      <div class="popup-content">
+        <h2>暂停</h2>
+        <button class="btn btn-primary" id="btn-resume">继续游戏</button>
+        <button class="btn btn-secondary" id="btn-restart">重新开始</button>
+        <button class="btn btn-danger" id="btn-quit">返回主菜单</button>
+      </div>
+    </div>
+
+    <!-- 操作说明弹窗 -->
+    <div id="popup-controls" class="ui-popup" style="display:none;">
+      <div class="popup-content popup-wide">
+        <h2>操作说明</h2>
+        <div class="controls-grid">
+          <div class="control-item"><span class="key">W A S D</span> 移动</div>
+          <div class="control-item"><span class="key">J / 🖱左键</span> 攻击</div>
+          <div class="control-item"><span class="key">K / 🖱右键</span> 技能1</div>
+          <div class="control-item"><span class="key">L</span> 技能2</div>
+          <div class="control-item"><span class="key">Space</span> 闪避翻滚</div>
+          <div class="control-item"><span class="key">Shift</span> 格挡</div>
+          <div class="control-item"><span class="key">E</span> 交互/拾取</div>
+          <div class="control-item"><span class="key">Q</span> 使用道具</div>
+          <div class="control-item"><span class="key">Tab / M</span> 地图</div>
+          <div class="control-item"><span class="key">Esc</span> 暂停</div>
+        </div>
+        <button class="btn btn-primary" id="btn-close-controls">关闭</button>
+      </div>
+    </div>
+
+    <!-- 死亡/结算弹窗 -->
+    <div id="popup-result" class="ui-popup" style="display:none;">
+      <div class="popup-content">
+        <h2 id="result-title">深渊坠落</h2>
+        <div id="result-stats" class="result-stats"></div>
+        <button class="btn btn-primary" id="btn-retry">再试一次</button>
+        <button class="btn btn-secondary" id="btn-result-menu">返回主菜单</button>
+      </div>
+    </div>
+
+    <!-- ═══ 天赋三选一 ═══ -->
+    <div id="talent-select-container" class="ui-popup" style="display:none;">
+      <div class="popup-content popup-wide talent-popup">
+        <h2>选择天赋</h2>
+        <div class="talent-cards"></div>
+      </div>
+    </div>
+
+    <!-- ═══ 背包界面 ═══ -->
+    <div id="inventory-container" class="ui-popup" style="display:none;">
+      <div class="popup-content popup-wide inventory-popup">
+        <h2>背包</h2>
+        <div class="equipment-slots"></div>
+        <div class="inventory-grid"></div>
+        <div class="synergy-display"></div>
+        <button class="btn btn-primary" id="btn-close-inventory">关闭</button>
+      </div>
+    </div>
+
+    <!-- ═══ Boss 登场 ═══ -->
+    <div id="boss-intro-container" class="ui-screen boss-intro-screen" style="display:none;">
+      <div class="boss-intro-content">
+        <div class="boss-name"></div>
+        <div class="boss-title"></div>
+      </div>
+    </div>
+
+    <!-- ═══ 商店界面 ═══ -->
+    <div id="shop-container" class="ui-popup" style="display:none;">
+      <div class="popup-content popup-wide shop-popup">
+        <h2>虚空商人</h2>
+        <div class="shop-items"></div>
+        <button class="btn btn-primary" id="btn-close-shop">关闭</button>
+      </div>
+    </div>
+
+    <!-- ═══ 全屏地图叠加层 ═══ -->
+    <div id="map-overlay" class="ui-screen map-screen" style="display:none;">
+      <h2 class="map-title">深渊地图</h2>
+      <canvas id="map-canvas" width="600" height="400"></canvas>
+      <button class="btn btn-primary btn-back" id="btn-close-map">关闭</button>
+    </div>
+
+    <!-- ═══ Meta 升级面板 ═══ -->
+    <div id="meta-upgrade-container" class="ui-screen" style="display:none;">
+      <h2 class="screen-title">深 渊 强 化</h2>
+      <div class="meta-shards-display">
+        <span class="meta-shard-icon">💎</span>
+        <span class="meta-shard-count" id="meta-shard-count">0</span>
+        <span class="meta-shard-label">深渊碎片</span>
+      </div>
+      <div class="meta-upgrade-grid" id="meta-upgrade-grid">
+        <!-- JS 动态生成 -->
+      </div>
+      <div class="meta-stats-summary" id="meta-stats-summary"></div>
+      <button class="btn btn-back" id="btn-back-from-meta">返回</button>
+    </div>
+
+    <!-- ═══ 移动端虚拟摇杆 ═══ -->
+    <div id="touch-controls" class="touch-controls" style="display:none;">
+      <div class="joystick-container" id="joystick-container">
+        <div class="joystick-base" id="joystick-base">
+          <div class="joystick-thumb" id="joystick-thumb"></div>
+        </div>
+      </div>
+      <div class="action-buttons">
+        <button class="action-btn action-btn-attack" id="btn-touch-attack">⚔</button>
+        <button class="action-btn action-btn-skill" id="btn-touch-skill">✨</button>
+        <button class="action-btn action-btn-dodge" id="btn-touch-dodge">💨</button>
+        <button class="action-btn action-btn-block" id="btn-touch-block">🛡</button>
+      </div>
+    </div>
+
+    <!-- 静音按钮（右上角常驻） -->
+    <button id="btn-mute" class="mute-button" title="切换静音">🔊</button>
+  </div>
+
+  <!-- ═══ 脚本加载 ═══ -->
+  <!-- audio.js 使用 IIFE 格式，非 module -->
+  <script src="js/audio.js"></script>
+
+  <!-- 主模块入口 -->
+  <script type="module">
+    import { EventBus } from './js/event-bus.js';
+    import { GameEngine } from './js/engine.js';
+    import { UIManager } from './js/ui.js';
+
+    // ── 加载流程 ──
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingBar = document.getElementById('loading-bar');
+    const loadingText = document.getElementById('loading-text');
+
+    async function boot() {
+      loadingText.textContent = 'Loading modules...';
+      loadingBar.style.width = '20%';
+
+      // 初始化引擎
+      const container = document.getElementById('game-container');
+      const success = GameEngine.init({ container });
+
+      if (!success) {
+        loadingText.textContent = '❌ Engine initialization failed';
+        loadingBar.style.backgroundColor = '#ef4444';
+        return;
+      }
+
+      loadingText.textContent = 'Engine ready...';
+      loadingBar.style.width = '50%';
+
+      // 初始化 UIManager
+      const hudCanvas = document.getElementById('canvas-hud');
+      const uiContainer = document.getElementById('ui-container');
+      UIManager.init({ canvas: hudCanvas, uiContainer });
+
+      loadingText.textContent = 'UI ready...';
+      loadingBar.style.width = '80%';
+
+      // 绑定额外 UI 事件
+      bindUIEvents();
+
+      loadingText.textContent = 'Complete!';
+      loadingBar.style.width = '100%';
+
+      // 淡出加载遮罩
+      await new Promise(r => setTimeout(r, 400));
+      loadingOverlay.classList.add('fade-out');
+      await new Promise(r => setTimeout(r, 600));
+      loadingOverlay.style.display = 'none';
+
+      // 显示标题画面
+      UIManager.showScreen('title');
+    }
+
+    // ── UIManager 接管了大部分 UI 事件，此处仅保留音频相关 ──
+    function bindUIEvents() {
+      // 静音按钮
+      const btnMute = document.getElementById('btn-mute');
+      if (btnMute) {
+        btnMute.addEventListener('click', () => {
+          if (window.AudioManager) {
+            const muted = window.AudioManager.toggleMute();
+            btnMute.textContent = muted ? '🔇' : '🔊';
+          }
+        });
+        if (window.AudioManager && window.AudioManager.isMuted()) {
+          btnMute.textContent = '🔇';
+        }
+      }
+
+      // 角色选择 → 启动游戏
+      EventBus.on('game:characterSelected', (data) => {
+        if (window.AudioManager) window.AudioManager.play('confirm');
+        GameEngine.start({ characterId: data.characterId });
+      });
+
+      // 暂停/恢复
+      EventBus.on('game:pause', () => {
+        UIManager.showScreen('pause');
+      });
+      EventBus.on('game:resume', () => {
+        UIManager.showScreen('game');
+        GameEngine.resume();
+      });
+
+      // 重新开始
+      EventBus.on('game:restart', () => {
+        GameEngine.stop();
+        GameEngine.start({ characterId: GameEngine.getState().player.characterId });
+        UIManager.showScreen('game');
+      });
+
+      // 退出到主菜单
+      EventBus.on('game:quit', () => {
+        GameEngine.stop();
+        UIManager.showScreen('title');
+      });
+
+      // 背包关闭
+      const btnCloseInv = document.getElementById('btn-close-inventory');
+      if (btnCloseInv) {
+        btnCloseInv.addEventListener('click', () => {
+          UIManager.showScreen('game');
+          EventBus.emit('game:resume', {});
+        });
+      }
+
+      // 商店关闭
+      const btnCloseShop = document.getElementById('btn-close-shop');
+      if (btnCloseShop) {
+        btnCloseShop.addEventListener('click', () => {
+          UIManager.showScreen('game');
+          EventBus.emit('game:resume', {});
+        });
+      }
+
+      // 地图关闭
+      const btnCloseMap = document.getElementById('btn-close-map');
+      if (btnCloseMap) {
+        btnCloseMap.addEventListener('click', () => {
+          UIManager.showScreen('game');
+        });
+      }
+
+      // ── Meta 升级系统 ──
+      EventBus.on('meta:open', () => {
+        const progress = GameEngine.getState()._saveManager
+          ? GameEngine.getState()._saveManager.loadProgress()
+          : (window.__SaveManager || { loadProgress: () => ({}) }).loadProgress();
+        // 直接从 SaveManager 导入
+        import('./js/save.js').then(({ SaveManager }) => {
+          const p = SaveManager.loadProgress();
+          UIManager.showScreen('meta_upgrade', p);
+        });
+      });
+
+      EventBus.on('meta:purchase', (data) => {
+        import('./js/save.js').then(({ SaveManager }) => {
+          const result = SaveManager.purchaseUpgrade(data.upgradeId, data.cost);
+          if (result.success) {
+            if (window.AudioManager) window.AudioManager.play('confirm');
+            // 刷新面板
+            const p = SaveManager.loadProgress();
+            UIManager.showScreen('meta_upgrade', p);
+          }
+        });
+      });
+
+      // ── 移动端触控输入 ──
+      let _touchMoveX = 0, _touchMoveY = 0;
+      EventBus.on('touch:joystick', (data) => {
+        _touchMoveX = data.x;
+        _touchMoveY = data.y;
+        // 注入到 Input 系统
+        const input = GameEngine.Input;
+        if (Math.abs(data.x) > 0.2) {
+          input.keys[data.x < 0 ? 'KeyA' : 'KeyD'] = true;
+          input.keys[data.x < 0 ? 'KeyD' : 'KeyA'] = false;
+        } else {
+          input.keys['KeyA'] = false;
+          input.keys['KeyD'] = false;
+        }
+        if (Math.abs(data.y) > 0.2) {
+          input.keys[data.y < 0 ? 'KeyW' : 'KeyS'] = true;
+          input.keys[data.y < 0 ? 'KeyS' : 'KeyW'] = false;
+        } else {
+          input.keys['KeyW'] = false;
+          input.keys['KeyS'] = false;
+        }
+      });
+
+      EventBus.on('touch:attack', (data) => {
+        if (data.pressed) GameEngine.Input.keysDown['KeyJ'] = true;
+      });
+      EventBus.on('touch:skill', (data) => {
+        if (data.pressed) GameEngine.Input.keysDown['KeyK'] = true;
+      });
+      EventBus.on('touch:dodge', (data) => {
+        if (data.pressed) GameEngine.Input.keysDown['Space'] = true;
+      });
+      EventBus.on('touch:block', (data) => {
+        if (data.pressed) {
+          GameEngine.Input.keys['ShiftLeft'] = true;
+        } else {
+          GameEngine.Input.keys['ShiftLeft'] = false;
+        }
+      });
+    }
+
+    // 启动
+    window.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>
