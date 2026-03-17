@@ -32,6 +32,7 @@
   <div id="ui-container" class="ui-container">
     <!-- 主菜单 -->
     <div id="menu-main" class="ui-screen menu-screen" style="display:none;">
+      <canvas id="menu-particles" class="menu-particles-canvas"></canvas>
       <h1 class="menu-title">VOID ABYSS</h1>
       <p class="menu-subtitle">深 渊 领 域</p>
       <div class="menu-buttons">
@@ -40,6 +41,7 @@
         <button class="btn btn-secondary" id="btn-how-to-play">操作说明</button>
         <button class="btn btn-secondary" id="btn-settings">设置</button>
       </div>
+      <div class="menu-version">v2.0</div>
     </div>
 
     <!-- 角色选择 -->
@@ -476,6 +478,88 @@
         } else {
           GameEngine.Input.keys['ShiftLeft'] = false;
         }
+      });
+
+      // ══ 主菜单粒子背景动画 ══
+      const menuCanvas = document.getElementById('menu-particles');
+      if (menuCanvas) {
+        const mctx = menuCanvas.getContext('2d');
+        const mParticles = [];
+        const MP_COUNT = 60;
+
+        function resizeMenuCanvas() {
+          menuCanvas.width = window.innerWidth;
+          menuCanvas.height = window.innerHeight;
+        }
+        resizeMenuCanvas();
+        window.addEventListener('resize', resizeMenuCanvas);
+
+        for (let i = 0; i < MP_COUNT; i++) {
+          mParticles.push({
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: -0.3 - Math.random() * 0.8,
+            r: 1 + Math.random() * 2.5,
+            alpha: 0.1 + Math.random() * 0.4,
+            phase: Math.random() * Math.PI * 2
+          });
+        }
+
+        let menuAnimId;
+        function animMenuParticles() {
+          if (!menuCanvas.offsetParent && menuCanvas.closest('#menu-main')?.style.display === 'none') {
+            menuAnimId = requestAnimationFrame(animMenuParticles);
+            return;
+          }
+          mctx.clearRect(0, 0, menuCanvas.width, menuCanvas.height);
+          for (const p of mParticles) {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.phase += 0.02;
+            const a = p.alpha + Math.sin(p.phase) * 0.15;
+            if (p.y < -10) { p.y = menuCanvas.height + 10; p.x = Math.random() * menuCanvas.width; }
+            if (p.x < -10) p.x = menuCanvas.width + 10;
+            if (p.x > menuCanvas.width + 10) p.x = -10;
+            mctx.save();
+            mctx.globalAlpha = Math.max(0, Math.min(1, a));
+            mctx.fillStyle = '#a855f7';
+            mctx.beginPath();
+            mctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.restore();
+          }
+          // 连线（短距粒子连线）
+          mctx.strokeStyle = 'rgba(168,85,247,0.06)';
+          mctx.lineWidth = 1;
+          for (let i = 0; i < mParticles.length; i++) {
+            for (let j = i + 1; j < mParticles.length; j++) {
+              const dx = mParticles[i].x - mParticles[j].x;
+              const dy = mParticles[i].y - mParticles[j].y;
+              const d = dx * dx + dy * dy;
+              if (d < 12000) {
+                mctx.globalAlpha = 0.08 * (1 - d / 12000);
+                mctx.beginPath();
+                mctx.moveTo(mParticles[i].x, mParticles[i].y);
+                mctx.lineTo(mParticles[j].x, mParticles[j].y);
+                mctx.stroke();
+              }
+            }
+          }
+          mctx.globalAlpha = 1;
+          menuAnimId = requestAnimationFrame(animMenuParticles);
+        }
+        animMenuParticles();
+      }
+
+      // ══ 按钮悬浮音效 ══
+      document.querySelectorAll('.btn').forEach(btn => {
+        btn.addEventListener('mouseenter', () => {
+          if (window.AudioManager) window.AudioManager.play('hover');
+        });
+        btn.addEventListener('click', () => {
+          if (window.AudioManager) window.AudioManager.play('confirm');
+        });
       });
     }
 
