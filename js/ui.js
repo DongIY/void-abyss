@@ -206,8 +206,11 @@ export const UIManager = {
     d.vy = -60 - Math.random() * 20;
     // 暴击特殊效果
     if (d.type === 'crit') {
-      d.scale = 1.6;
-      d.maxLife = 1.0;
+      d.scale = 2.2;
+      d.maxLife = 1.1;
+    } else if (d.type === 'element') {
+      d.scale = 1.3;
+      d.maxLife = 0.9;
     } else {
       d.scale = 1.0;
       d.maxLife = 0.8;
@@ -926,6 +929,7 @@ function _drawSkillBar(ctx) {
   const slotW = 60, slotH = 36, gap = 8;
   const keys = ['Q', 'J', 'K', 'L'];
   const labels = ['道具', '攻击', '技能1', '技能2'];
+  const skills = _hud.skills || [];
 
   ctx.save();
   ctx.textAlign = 'center';
@@ -933,22 +937,48 @@ function _drawSkillBar(ctx) {
   for (let i = 0; i < 4; i++) {
     const sx = bx + i * (slotW + gap);
     const sy = by;
+    const skill = skills[i];
+    const cdRatio = skill ? (skill.cooldownLeft || 0) / (skill.cooldownMax || 1) : 0;
+    const isReady = cdRatio <= 0;
 
-    // 背景
-    ctx.fillStyle = 'rgba(10, 10, 26, 0.7)';
+    // 背景 + 就绪高亮
+    ctx.fillStyle = isReady ? 'rgba(20, 16, 40, 0.8)' : 'rgba(10, 10, 26, 0.85)';
     ctx.fillRect(sx, sy, slotW, slotH);
-    ctx.strokeStyle = 'rgba(168, 85, 247, 0.3)';
+
+    // 冷却遮罩（从下往上收缩）
+    if (cdRatio > 0) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      const cdH = slotH * cdRatio;
+      ctx.fillRect(sx, sy + (slotH - cdH), slotW, cdH);
+
+      // 冷却倒计时数字
+      ctx.font = 'bold 14px monospace';
+      ctx.fillStyle = 'rgba(248, 250, 252, 0.7)';
+      ctx.fillText(`${Math.ceil((skill.cooldownLeft || 0) * 10) / 10}`, sx + slotW / 2, sy + slotH / 2 + 5);
+    }
+
+    // 边框（就绪时发光）
+    if (isReady && i > 0) {
+      const pulse = Math.sin(performance.now() * 0.004) * 0.2 + 0.5;
+      ctx.strokeStyle = `rgba(168, 85, 247, ${pulse})`;
+      ctx.lineWidth = 1.5;
+    } else {
+      ctx.strokeStyle = cdRatio > 0 ? 'rgba(100, 100, 140, 0.3)' : 'rgba(168, 85, 247, 0.3)';
+      ctx.lineWidth = 1;
+    }
     ctx.strokeRect(sx, sy, slotW, slotH);
 
     // 按键提示
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = '#a855f7';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = isReady ? '#c084fc' : '#64748b';
     ctx.fillText(keys[i], sx + slotW / 2, sy + 13);
 
     // 名称
     ctx.font = '9px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(labels[i], sx + slotW / 2, sy + 28);
+    ctx.fillStyle = isReady ? '#94a3b8' : '#475569';
+    if (cdRatio <= 0) {
+      ctx.fillText(labels[i], sx + slotW / 2, sy + 28);
+    }
   }
 
   ctx.restore();
@@ -998,7 +1028,9 @@ function _updateDamageNumbers(ctx, dt) {
 
     // 暴击缩放渐回
     if (d.type === 'crit') {
-      d.scale = 1.0 + 0.6 * Math.max(0, 1 - d.life * 3);
+      d.scale = 1.0 + 1.2 * Math.max(0, 1 - d.life * 2.5);
+    } else if (d.type === 'element') {
+      d.scale = 1.0 + 0.3 * Math.max(0, 1 - d.life * 3);
     }
 
     if (d.life >= d.maxLife) {
@@ -1008,7 +1040,7 @@ function _updateDamageNumbers(ctx, dt) {
     }
 
     ctx.globalAlpha = Math.max(0, d.alpha);
-    const fontSize = Math.floor(14 * d.scale);
+    const fontSize = Math.floor(18 * d.scale);
     ctx.font = `bold ${fontSize}px monospace`;
     ctx.fillStyle = d.color;
 
