@@ -18,7 +18,7 @@ const TUTORIAL_STEPS = [
   {
     id: 'welcome',
     title: '🎯 你的目标',
-    instruction: '消灭所有敌人 → 找到出口 → 击败Boss通关！',
+    instruction: '走到发光的门前按 E 进入 → 消灭敌人 → 击败Boss通关！',
     subtext: '按任意键继续...',
     keys: [],
     trigger: 'any_key',
@@ -107,7 +107,7 @@ export const TutorialSystem = {
       _active = false;
       _completed = true;
       // 即使不是首次，也显示关卡目标
-      _objectiveText = '🎯 消灭所有敌人 → 找到出口';
+      _objectiveText = '🎯 走到门前按 E → 消灭敌人 → 找到出口';
       _objectiveAlpha = 0.8;
       return;
     }
@@ -134,7 +134,7 @@ export const TutorialSystem = {
   skip() {
     _active = false;
     _completed = true;
-    _objectiveText = '🎯 消灭所有敌人 → 找到出口';
+    _objectiveText = '🎯 走到门前按 E → 消灭敌人 → 找到出口';
     _objectiveAlpha = 0.8;
     EventBus.emit('tutorial:complete', {});
   },
