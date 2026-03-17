@@ -214,16 +214,60 @@ export const Renderer = {
       for (let i = 0; i < room.doors.length; i++) {
         const door = room.doors[i];
         const doorScreen = Camera.worldToScreen(door.x, door.y);
-        ctx.fillStyle = room.cleared ? '#6b3fa0' : '#333355';
-        ctx.fillRect(doorScreen.x - 16, doorScreen.y - 16, 32, 32);
 
         if (room.cleared) {
-          // 门上的发光效果
+          // ── 已解锁门：脉冲发光 + 呼吸动画 ──
+          const pulse = Math.sin(performance.now() * 0.004) * 0.3 + 0.7;
+          const breathe = Math.sin(performance.now() * 0.003) * 2;
+
+          // 外层光晕（大范围柔和发光）
+          ctx.save();
           ctx.shadowColor = '#a855f7';
-          ctx.shadowBlur = 10;
-          ctx.fillStyle = 'rgba(168, 85, 247, 0.5)';
-          ctx.fillRect(doorScreen.x - 12, doorScreen.y - 12, 24, 24);
+          ctx.shadowBlur = 20 * pulse;
+          ctx.fillStyle = `rgba(168, 85, 247, ${0.2 * pulse})`;
+          ctx.beginPath();
+          ctx.arc(doorScreen.x, doorScreen.y + breathe, 22, 0, Math.PI * 2);
+          ctx.fill();
           ctx.shadowBlur = 0;
+          ctx.restore();
+
+          // 门体
+          ctx.fillStyle = `rgba(107, 63, 160, ${0.7 + pulse * 0.3})`;
+          ctx.fillRect(doorScreen.x - 16, doorScreen.y - 16 + breathe, 32, 32);
+
+          // 内层发光
+          ctx.save();
+          ctx.shadowColor = '#a855f7';
+          ctx.shadowBlur = 12;
+          ctx.fillStyle = `rgba(168, 85, 247, ${0.4 + pulse * 0.3})`;
+          ctx.fillRect(doorScreen.x - 12, doorScreen.y - 12 + breathe, 24, 24);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+
+          // 门中心明亮核心
+          ctx.fillStyle = `rgba(192, 132, 252, ${0.6 * pulse})`;
+          ctx.fillRect(doorScreen.x - 6, doorScreen.y - 6 + breathe, 12, 12);
+
+          // ── 方向箭头提示（向门方向的三角形） ──
+          const arrowBob = Math.sin(performance.now() * 0.005) * 4;
+          ctx.save();
+          ctx.fillStyle = `rgba(168, 85, 247, ${0.5 + pulse * 0.3})`;
+          // 上箭头
+          ctx.beginPath();
+          ctx.moveTo(doorScreen.x, doorScreen.y - 26 + breathe - arrowBob);
+          ctx.lineTo(doorScreen.x - 6, doorScreen.y - 20 + breathe - arrowBob);
+          ctx.lineTo(doorScreen.x + 6, doorScreen.y - 20 + breathe - arrowBob);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        } else {
+          // ── 未解锁门：暗淡显示 ──
+          ctx.fillStyle = '#333355';
+          ctx.fillRect(doorScreen.x - 16, doorScreen.y - 16, 32, 32);
+          // 微弱的锁定指示
+          ctx.strokeStyle = 'rgba(100, 100, 150, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(doorScreen.x - 14, doorScreen.y - 14, 28, 28);
         }
       }
     }
