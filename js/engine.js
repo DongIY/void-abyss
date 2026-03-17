@@ -1274,6 +1274,18 @@ export const GameEngine = {
   _spawnRoomEnemies(room) {
     if (!room || room.type === 'start' || room.type === 'shop' || room.type === 'treasure') return;
 
+    // 第一层第一个房间（起始房间）不生成敌人 → 安全教学区
+    if (_state.dungeon.currentLayer === 1 && _state.dungeon.roomsExplored === 0 && !room._isSafeZoneChecked) {
+      room._isSafeZoneChecked = true;
+      room.cleared = true; // 标记为已清除，门直接可用
+      EventBus.emit('dungeon:roomCleared', {
+        roomId: room.id,
+        roomType: room.type,
+        layer: 1
+      });
+      return;
+    }
+
     const layer = DungeonGenerator.getCurrentLayer();
     const isBossRoom = room.type === 'boss';
     const isEliteRoom = room.type === 'elite';
